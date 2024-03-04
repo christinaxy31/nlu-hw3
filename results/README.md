@@ -1,0 +1,1 @@
+This folder contains the results of your TruthfulQA experiment. This file only exists because GitHub does not allow empty folders.

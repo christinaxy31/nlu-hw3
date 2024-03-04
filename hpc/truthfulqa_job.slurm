@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # Please adjust these settings according to your needs.
+#SBATCH --account=ds_ga_1012-2024sp
+#SBATCH --partition=n1s8-v100-1
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1
