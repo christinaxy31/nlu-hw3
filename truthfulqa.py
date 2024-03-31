@@ -1,3 +1,7 @@
+
+
+
+# %load truthfulqa.py
 """
 Code for HW 3. The code in this file can be used as either a script or a
 module. You will implement the MultipleChoicePipeline class in Problem
@@ -165,7 +169,27 @@ class MultipleChoicePipeline(Pipeline):
                 text 5 corresponds to answer choice 1 for question 1,
                 etc.
         """
+        
+        input_texts = []
+        for i, one_of_the_questions in enumerate(batch['question']):
+            input_text = ""
+            answers_for_one_question = batch['choices'][i]
+            label_for_one_question = batch['label'][i]
+            for j in range(4):
+                input_text = ""
+                if self._demos != "":
+                    input_text = f"{self._demos}"
+                if self._system_prompt != "":
+                    answers_for_one_question[j] = self._system_prompt + ' '+ batch['choices'][i][j]
+                    
+            # Forming the input text by concatenating prompt, question, and answer choice
+                input_text += f"Q:{one_of_the_questions}\nA:{answers_for_one_question[j]}"
+                input_texts.append(input_text)
+        
+            
+        return input_texts
         raise NotImplementedError("Problem 2c has not been completed yet!")
+
 
     def preprocess(self, batch: Dict[str, Any]) -> Dict[str, torch.Tensor]:
         """
@@ -183,6 +207,13 @@ class MultipleChoicePipeline(Pipeline):
             These tensors should be stored on the GPU if it is being
             used; otherwise, they should be stored on the CPU
         """
+        input_texts = self._get_input_texts(batch)
+        
+
+        # Tokenize the input texts and convert to tensor
+        inputs = self.tokenizer(input_texts, return_tensors='pt', padding=True, truncation=True)
+
+        return inputs
         raise NotImplementedError("Problem 2d has not been completed yet!")
 
     def _forward(self, input_: Dict[str, torch.Tensor]) -> \
@@ -198,6 +229,11 @@ class MultipleChoicePipeline(Pipeline):
         :return: The logit scores assigned to each next-token prediction
             as well as the input_ids tensor from input_
         """
+        
+        with torch.no_grad():
+            outputs = self.model(**input_)
+            logits = outputs.logits
+        return {"input_ids": input_['input_ids'], "logits": logits}
         raise NotImplementedError("Problem 2d has not been completed yet!")
 
     def postprocess(self, outputs: Dict[str, torch.Tensor]) -> Output:
@@ -219,7 +255,34 @@ class MultipleChoicePipeline(Pipeline):
             responds to question i and column j corresponds to answer
             choice j
         """
+        
+        logits = outputs["logits"]  # Logits for each token prediction
+        input_ids = outputs["input_ids"]  # Input token indices
+
+        total_loss = []
+        # Calculate cross-entropy loss for each answer choice
+        batch_size, seq_length, vocab_size = logits.shape
+        print(batch_size)  #8
+        print(seq_length)  #66
+        print(vocab_size)  #50257
+        
+        for i in range(batch_size):
+            logit_sample = logits[i][:-1] #0...64
+            target = input_ids[i][1:]   #1...65
+            print(logit_sample.shape)
+            print(target.shape)
+            loss = self.loss_fn(logit_sample,target)
+            total_sum = torch.sum(loss)
+            total_loss.append(total_sum)
+        
+        total_loss = torch.tensor(total_loss).reshape(-1,self.num_choices) #2,4
+            
+        min_loss_indices = torch.argmin(total_loss, dim = 1)
+        return Output(loss=total_loss, prediction = min_loss_indices)
+
+        
         raise NotImplementedError("Problem 2d has not been completed yet!")
+
 
 
 def run_model(pipeline: MultipleChoicePipeline, dataset: Dataset,
@@ -282,43 +345,3 @@ def evaluate_truthfulqa(pipeline: MultipleChoicePipeline, dataset: Dataset,
     return accuracy
 
 
-if __name__ == "__main__":
-    # Define command-line arguments
-    parser = argparse.ArgumentParser(
-        description="Evaluates a Hugging Face language model on TruthfulQA "
-                    "using a multiple-choice paradigm.")
-
-    parser.add_argument("model", type=str,
-                        help="The Hugging Face name of the model to be "
-                             "evaluated")
-    parser.add_argument("-b", "--batch-size", type=int, default=10,
-                        help="The batch size to use for evaluation")
-    parser.add_argument("-s", "--system-prompt", type=str, default="",
-                        help="An optional system prompt to use with the model")
-    parser.add_argument("-d", "--demos", type=str,
-                        default="demonstrations.txt",
-                        help="A file in the prompt_templates folder "
-                             "containing demonstrations for few-shot "
-                             "prompting")
-    parser.add_argument("--no-demos", action="store_true",
-                        help="Do not use demonstrations")
-    parser.add_argument("--debug", action="store_true",
-                        help="Use a small dataset during debugging")
-
-    args = parser.parse_args()
-
-    # Load TruthfulQA
-    split = "validation[:10]" if args.debug else "validation"
-    truthfulqa = load_dataset("EleutherAI/truthful_qa_mc", split=split)
-
-    # Load pipeline and prompts
-    lm = MultipleChoicePipeline(model=args.model)
-    if not args.no_demos:
-        lm.load_demonstrations("prompt_templates/" + args.demos)
-    if args.system_prompt != "":
-        lm.set_system_prompt(args.system_prompt)
-
-    # Run the pipeline on TruthfulQA
-    print_delay(f"Testing model {args.model} on TruthfulQA...")
-    acc = evaluate_truthfulqa(lm, truthfulqa, batch_size=3)
-    print_delay(f"Done. Accuracy: {acc['accuracy']}")
