@@ -176,17 +176,11 @@ class MultipleChoicePipeline(Pipeline):
             answers_for_one_question = batch['choices'][i]
             label_for_one_question = batch['label'][i]
             for j in range(4):
-                input_text = ""
-                if self._demos != "":
-                    input_text = f"{self._demos}"
-                if self._system_prompt != "":
-                    answers_for_one_question[j] = self._system_prompt + ' '+ batch['choices'][i][j]
-                    
-            # Forming the input text by concatenating prompt, question, and answer choice
-                input_text += f"Q:{one_of_the_questions}\nA:{answers_for_one_question[j]}"
+                demo_text = self._demos if self._demos else ""
+                system_prompt_text = self._system_prompt if self._system_prompt else ""
+                input_text = f"{demo_text}Q: {one_of_the_questions}\nA:{system_prompt_text} {answers_for_one_question[j]}"
                 input_texts.append(input_text)
         
-            
         return input_texts
         raise NotImplementedError("Problem 2c has not been completed yet!")
 
