@@ -339,3 +339,43 @@ def evaluate_truthfulqa(pipeline: MultipleChoicePipeline, dataset: Dataset,
     return accuracy
 
 
+if __name__ == "__main__":
+    # Define command-line arguments
+    parser = argparse.ArgumentParser(
+        description="Evaluates a Hugging Face language model on TruthfulQA "
+                    "using a multiple-choice paradigm.")
+
+    parser.add_argument("model", type=str,
+                        help="The Hugging Face name of the model to be "
+                             "evaluated")
+    parser.add_argument("-b", "--batch-size", type=int, default=10,
+                        help="The batch size to use for evaluation")
+    parser.add_argument("-s", "--system-prompt", type=str, default="",
+                        help="An optional system prompt to use with the model")
+    parser.add_argument("-d", "--demos", type=str,
+                        default="demonstrations.txt",
+                        help="A file in the prompt_templates folder "
+                             "containing demonstrations for few-shot "
+                             "prompting")
+    parser.add_argument("--no-demos", action="store_true",
+                        help="Do not use demonstrations")
+    parser.add_argument("--debug", action="store_true",
+                        help="Use a small dataset during debugging")
+
+    args = parser.parse_args()
+
+    # Load TruthfulQA
+    split = "validation[:10]" if args.debug else "validation"
+    truthfulqa = load_dataset("EleutherAI/truthful_qa_mc", split=split)
+
+    # Load pipeline and prompts
+    lm = MultipleChoicePipeline(model=args.model)
+    if not args.no_demos:
+        lm.load_demonstrations("prompt_templates/" + args.demos)
+    if args.system_prompt != "":
+        lm.set_system_prompt(args.system_prompt)
+
+    # Run the pipeline on TruthfulQA
+    print_delay(f"Testing model {args.model} on TruthfulQA...")
+    acc = evaluate_truthfulqa(lm, truthfulqa, batch_size=3)
+    print_delay(f"Done. Accuracy: {acc['accuracy']}")
